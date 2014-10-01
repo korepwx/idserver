@@ -1,0 +1,4 @@
+project = 'ID Server'
+author = None
+license = 'custom'
+customLicense = 'This file is distributed under 2-Clause BSD License, which can be found in LICENSE.txt'

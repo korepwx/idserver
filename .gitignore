@@ -1,0 +1,11 @@
+/env
+/db
+/tmp
+/config
+/logs
+nohup*
+*.pyc
+*.sublime-*
+*.so
+*-my.*
+.DS_Store
