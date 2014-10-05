@@ -1,11 +1,5 @@
 /env
-/db
-/tmp
-/config
-/logs
-nohup*
+/build
 *.pyc
 *.sublime-*
-*.so
-*-my.*
 .DS_Store
