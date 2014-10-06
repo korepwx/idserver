@@ -9,12 +9,14 @@
 from distutils.core import setup
 import idserver
 
-setup(name='idserver',
-      version=idserver.version,
-      description='A python server to manage and distribute a collection of pre-defined ids on client requests.',
-      author='Korepwx',
-      author_email='public@korepwx.com',
-      url='https://github.com/korepwx/idserver',
-      license='BSD',
-      packages=['idserver'],
+setup(
+    name='idserver',
+    version=idserver.version,
+    description='A python server to manage and distribute a collection of '
+                'pre-defined ids on client requests.',
+    author='Korepwx',
+    author_email='public@korepwx.com',
+    url='https://github.com/korepwx/idserver',
+    license='BSD',
+    packages=['idserver'],
 )
