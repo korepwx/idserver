@@ -10,13 +10,11 @@ That's why I created this package, `idserver`. Now it can run an id server, mana
 
 # Restrictions
 
-In current release, the id server and id client both use single-threaded udp model. I suppose the process for a server to pick out a free id is rather fast, so it's okay to serve it single-threaded.
-
 If the server has no free id, it will not go into blocking, instead it will give the failure to the clients. So it's your duty to retry in a client program.
 
 # Examples
 
-## Server-side
+## UDP Server
 
 ```python
 from idserver import IdPool, UdpIdServer
@@ -26,7 +24,7 @@ svr = UdpIdServer(idp, '127.0.0.1', 9777)
 svr.run_forever()
 ```
 
-## Client-side
+## UDP Client
 
 ```python
 import os
@@ -34,6 +32,32 @@ import time
 from idserver import UdpIdClient
 
 idc = UdpIdClient('127.0.0.1', 9777)
+print idc.acquire('client-%d' % os.getpid(), 10)
+time.sleep(1)
+idc.release('client-%d' % os.getpid())
+```
+
+
+## TCP Server
+
+TCP Server is available only if `~tornado` is installed.
+
+```python
+from idserver import IdPool, TcpIdServer
+
+idp = IdPool('name-%d' % x for x in xrange(10))
+svr = TcpIdServer(idp, '127.0.0.1', 9777)
+svr.run_forever()
+```
+
+## TCP Client
+
+```python
+import os
+import time
+from idserver import TcpIdClient
+
+idc = TcpIdClient('127.0.0.1', 9777)
 print idc.acquire('client-%d' % os.getpid(), 10)
 time.sleep(1)
 idc.release('client-%d' % os.getpid())

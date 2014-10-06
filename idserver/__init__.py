@@ -16,14 +16,21 @@
 """
 
 import time
-import json
 import socket
 import logging
 
 from ._helpers import is_ipv4
 from ._compact import iteritems, inet_pton
+from ._protocol import Protocol, SocketIdClient
 
-__all__ = ['IdPool', 'UdpIdServer', 'UdpIdClient']
+try:
+    from .ext.async_tcp import TcpIdServer
+except ImportError:
+    pass
+
+
+__all__ = ['IdPool', 'UdpIdServer', 'UdpIdClient', 'TcpIdServer',
+           'TcpIdClient']
 version = '0.1'
 
 # Max packet size of each request and response for servers and clients
@@ -102,7 +109,7 @@ class UdpIdServer(object):
         client connects within this period of time. default -1 (no timeout).
     """
 
-    def __init__(self, idpool, host, port, timeout=-1, backlog=100):
+    def __init__(self, idpool, host, port, timeout=-1):
         # determine whether host is ipv4 address or ipv6 address
         self.inet_type = socket.AF_INET
         if not is_ipv4(host):
@@ -112,37 +119,14 @@ class UdpIdServer(object):
                 pass
             else:
                 self.inet_type = socket.AF_INET6
+        # create protocol instance
+        self._protocol = Protocol(idpool)
         # record the parameters
-        self.idpool = idpool
         self.host = host
         self.port = port
         self.timeout = timeout
         # get the logger instance
         self.logger = logging.getLogger(__name__)
-
-    def _execute(self, data):
-        """Execute `data`, and return the response."""
-        try:
-            reqdata = json.loads(data)
-            if reqdata['action'] == 'get':
-                ret = self.idpool.acquire(reqdata['owner'], reqdata['expire'])
-                if not ret:
-                    return json.dumps({'error': 1, 'message': 'id exhausted'})
-                return json.dumps({'error': 0, 'value': ret})
-            elif reqdata['action'] == 'put':
-                self.idpool.release(reqdata['owner'])
-                return json.dumps({'error': 0})
-            else:
-                raise RuntimeError('Action "%s" is not recognized.' %
-                                   reqdata['action'])
-        except KeyError, ex:
-            return json.dumps({
-                'error': 1,
-                'message': "KeyError: '%s'" % ex.message
-            })
-        except Exception, ex:
-            logging.exception('Error execute "%s"' % data)
-            return json.dumps({'error': 1, 'message': ex.message})
 
     def run_forever(self):
         """Run the server on given (host, port)."""
@@ -157,14 +141,14 @@ class UdpIdServer(object):
         while True:
             msg, addr = server.recvfrom(MAX_PACKET)
             logging.debug('recv from %s' % (addr, ))
-            rspdata = self._execute(msg)
+            rspdata = self._protocol.handle(msg)
             logging.debug('send %s to %s' % (rspdata, addr))
             server.sendto(rspdata, addr)
 
         server.close()
 
 
-class UdpIdClient(object):
+class UdpIdClient(SocketIdClient):
     """UDP client to acquire ids from UDP id server.
 
     :param identity: The identity of this client.
@@ -174,19 +158,7 @@ class UdpIdClient(object):
     """
 
     def __init__(self, host, port, timeout=10):
-        # determine whether host is ipv4 address or ipv6 address
-        self.inet_type = socket.AF_INET
-        if not is_ipv4(host):
-            try:
-                inet_pton(host, socket.AF_INET6)
-            except Exception:
-                pass
-            else:
-                self.inet_type = socket.AF_INET6
-        # record the parameters
-        self.host = host
-        self.port = port
-        self.timeout = timeout
+        super(UdpIdClient, self).__init__(host, port, timeout)
 
     def _sendrecv(self, data):
         """Send `data` to server, and recv the response."""
@@ -194,26 +166,25 @@ class UdpIdClient(object):
         sck.sendto(data, (self.host, self.port))
         return sck.recv(8192)
 
-    def acquire(self, name, expire):
-        """Get an id from server, given owner `name` and `expire` time.
 
-        :param name: The name of this client. Server will tend to respond with
-            the same id if `name` is same.
-        :param expire: Seconds before this id to expire.
-        :raise RuntimeError: if remote server tells any error message.
-        :raise Exception: if network error takes place.
-        """
-        rspdata = json.loads(self._sendrecv(json.dumps({
-            'action': 'get', 'owner': name, 'expire': expire
-        })))
-        if rspdata['error'] != 0:
-            raise RuntimeError(rspdata['message'])
-        return rspdata['value']
+class TcpIdClient(SocketIdClient):
+    """TCP client to acquire ids from TCP id server.
 
-    def release(self, name):
-        """Put an id back to server, given owner `name`."""
-        rspdata = json.loads(self._sendrecv(json.dumps({
-            'action': 'put', 'owner': name
-        })))
-        if rspdata['error'] != 0:
-            raise RuntimeError(rspdata['message'])
+    :param identity: The identity of this client.
+    :param host: The host of id server.
+    :param port: The port of id server.
+    :param timeout: Timeout of the client to wait for results. default 10.
+    """
+
+    def __init__(self, host, port, timeout=10):
+        super(TcpIdClient, self).__init__(host, port, timeout)
+        self.sck = socket.socket(self.inet_type, socket.SOCK_STREAM)
+        self.sck.settimeout(timeout)
+        self.sck.connect((host, port))
+        self.fobj = self.sck.makefile('rw')
+
+    def _sendrecv(self, data):
+        """Send `data` to server, and recv the response."""
+        self.fobj.write('%s\n' % data)
+        self.fobj.flush()
+        return self.fobj.readline().strip()
